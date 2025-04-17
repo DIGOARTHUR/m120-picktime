@@ -234,7 +234,7 @@ export default function PickTimePage() {
                   <p className="text-gray-600 text-xs">{posto.nome}</p>
                 </div>
                 <div className="text-xs text-gray-500 text-right">
-                  Cliques:<br />{registros[getDataAtual()]?.[posto.id]?.cliques || 0}
+                Nº Paradas:<br />{registros[getDataAtual()]?.[posto.id]?.cliques || 0}
                 </div>
               </div>
 

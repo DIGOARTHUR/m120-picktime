@@ -84,7 +84,7 @@ export default function RelatorioPage() {
                               Posto ID
                             </th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Cliques
+                              Nº Paradas
                             </th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Tempo Total
