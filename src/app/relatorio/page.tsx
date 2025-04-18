@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { IoMdArrowRoundBack, IoMdArrowRoundForward } from "react-icons/io";
+import { IoMdArrowRoundBack } from "react-icons/io";
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { MdFilterListOff } from "react-icons/md";
@@ -88,9 +88,7 @@ export default function RelatorioPage() {
     setMostrarFiltro(!mostrarFiltro);
   };
 
-  // Verifica se há dados para o dia atual
-  const dataAtual = getDataAtual();
-  const haDadosHoje = registrosPorData[dataAtual] && Object.keys(registrosPorData[dataAtual]).length > 0;
+
   const usandoFiltro = dataSelecionada !== null;
 
   return (
