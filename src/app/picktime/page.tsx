@@ -1,6 +1,10 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { IoMdArrowRoundForward } from "react-icons/io";
+import { FaLinkedin } from "react-icons/fa";
+
 
 type Posto = {
   id: string;
@@ -55,9 +59,9 @@ export default function PickTimePage() {
 
   const getTurno = (): string => {
     const hour = new Date().getHours();
-    if (hour >= 8 && hour < 16) return '1º Turno';
-    if (hour >= 16 && hour < 24) return '2º Turno';
-    return '3º Turno';
+    if (hour >= 8 && hour < 16) return '08h-16h';
+    if (hour >= 16 && hour < 24) return '16h-00h';
+    return '00h-08h';
   };
 
   const getDataAtual = (): string => {
@@ -66,6 +70,18 @@ export default function PickTimePage() {
     const mes = String(now.getMonth() + 1).padStart(2, '0');
     const ano = now.getFullYear();
     return `${ano}-${mes}-${dia}`;
+  };
+
+  const isFinalDoTurno = (): boolean => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minutes = now.getMinutes();
+
+    return (
+      (hour === 7 && minutes >= 55) ||
+      (hour === 15 && minutes >= 55) ||
+      (hour === 23 && minutes >= 55)
+    );
   };
 
   useEffect(() => {
@@ -89,17 +105,14 @@ export default function PickTimePage() {
   useEffect(() => {
     let intervalo: NodeJS.Timeout | null = null;
 
-    if (postoAtivo) {
-      const start = startTime || Date.now();
-      setStartTime(start);
+    if (postoAtivo && startTime) {
       const tick = () => {
-        setTempoDecorrido(Math.floor((Date.now() - start) / 1000));
+        setTempoDecorrido(Math.floor((Date.now() - startTime) / 1000));
       };
       tick();
       intervalo = setInterval(tick, 1000);
     } else {
       setTempoDecorrido(0);
-      setStartTime(null);
     }
 
     return () => {
@@ -109,23 +122,51 @@ export default function PickTimePage() {
 
   useEffect(() => {
     const checkTurnoChange = () => {
-      const currentTurno = getTurno();
+      const turnoAtual = getTurno();
       const lastKnownTurno = localStorage.getItem('lastKnownTurno');
+      const isFinalTurno = isFinalDoTurno();
 
-      if (currentTurno !== lastKnownTurno) {
+      if (isFinalTurno || (turnoAtual !== lastKnownTurno && !isFinalTurno)) {
+        // Finaliza o registro atual se houver
+        if (postoAtivo && startTime) {
+          const dataAtual = getDataAtual();
+          const tempoFinal = Math.floor((Date.now() - startTime) / 1000);
+
+          setRegistros(prev => {
+            const dataRegistros = prev[dataAtual] || {};
+            const tempoTotalFinal = tempoFinal + (dataRegistros[postoAtivo]?.tempoTotal || 0);
+
+            return {
+              ...prev,
+              [dataAtual]: {
+                ...dataRegistros,
+                [postoAtivo]: {
+                  cliques: (dataRegistros[postoAtivo]?.cliques || 0) + 1,
+                  tempoTotal: tempoTotalFinal,
+                  turno: turnoAtual,
+                  dataRegistro: dataAtual,
+                  startTime: null,
+                },
+              },
+            };
+          });
+        }
+
+        // Reseta apenas as variáveis temporárias
         setPostoAtivo(null);
-        setTempoDecorrido(0);
         setStartTime(null);
-        localStorage.removeItem('postoAtivoPickTime');
-        localStorage.removeItem('startTimePickTime');
-        localStorage.setItem('lastKnownTurno', currentTurno);
+        setTempoDecorrido(0);
+
+        if (!isFinalTurno) {
+          localStorage.setItem('lastKnownTurno', turnoAtual);
+        }
       }
     };
 
     checkTurnoChange();
-    const intervalId = setInterval(checkTurnoChange, 60 * 60 * 1000);
+    const intervalId = setInterval(checkTurnoChange, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [postoAtivo, startTime]);
 
   const handlePostoClick = (postoId: string) => {
     const turnoAtual = getTurno();
@@ -133,62 +174,51 @@ export default function PickTimePage() {
 
     setRegistros(prev => {
       const dataRegistros = prev[dataAtual] || {};
+      const novoRegistros = { ...prev };
 
-      if (postoAtivo === postoId) {
-        // Para o cronômetro e soma ao tempo total
-        const finalTime = tempoDecorrido + (dataRegistros[postoId]?.tempoTotal || 0);
-        const updatedRegistro = {
-          ...dataRegistros[postoId],
-          cliques: dataRegistros[postoId]?.cliques || 0, // Não incrementa o clique ao parar
-          tempoTotal: finalTime,
-          turno: dataRegistros[postoId]?.turno || turnoAtual,
-          dataRegistro: dataAtual,
-          startTime: null, // Zera o startTime para parar a contagem
-        };
-        setPostoAtivo(null); // Desativa o posto
-        setTempoDecorrido(0); // Zera o tempo decorrido na tela
-        setStartTime(null); // Garante que startTime seja null
-        return {
-          ...prev,
-          [dataAtual]: { ...dataRegistros, [postoId]: updatedRegistro },
-        };
-      } else {
-        // Ativa novo posto e inicia a contagem, incrementando o clique
-        const novoPostoAtivo = postoId;
-        const novoStartTime = Date.now();
+      // Se já havia um posto ativo, salva o tempo acumulado
+      if (postoAtivo) {
+        const tempoAcumulado = tempoDecorrido + (dataRegistros[postoAtivo]?.tempoTotal || 0);
 
-        let updatedPrev = { ...prev };
-        if (postoAtivo) {
-          const currentTimeAnterior = tempoDecorrido + (dataRegistros[postoAtivo]?.tempoTotal || 0);
-          const updatedRegistroAnterior = {
-            ...dataRegistros[postoAtivo],
-            cliques: (dataRegistros[postoAtivo]?.cliques || 0),
-            tempoTotal: currentTimeAnterior,
+        novoRegistros[dataAtual] = {
+          ...dataRegistros,
+          [postoAtivo]: {
+            cliques: (dataRegistros[postoAtivo]?.cliques || 0) + 1,
+            tempoTotal: tempoAcumulado,
             turno: dataRegistros[postoAtivo]?.turno || turnoAtual,
             dataRegistro: dataAtual,
-            startTime: null,
-          };
-          updatedPrev = {
-            ...prev,
-            [dataAtual]: { ...dataRegistros, [postoAtivo]: updatedRegistroAnterior },
-          };
-        }
-
-        const newRegistro = {
-          cliques: (dataRegistros[novoPostoAtivo]?.cliques || 0) + 1, // Incrementa o clique ao iniciar
-          tempoTotal: dataRegistros[novoPostoAtivo]?.tempoTotal || 0,
-          startTime: novoStartTime,
-          turno: turnoAtual,
-          dataRegistro: dataAtual,
-        };
-        setPostoAtivo(novoPostoAtivo);
-        setTempoDecorrido(0);
-        setStartTime(novoStartTime);
-        return {
-          ...updatedPrev,
-          [dataAtual]: { ...dataRegistros, [novoPostoAtivo]: newRegistro },
+            startTime: null
+          }
         };
       }
+
+      // Se clicando no mesmo botão, apenas para a contagem
+      if (postoAtivo === postoId) {
+        setPostoAtivo(null);
+        setStartTime(null);
+        setTempoDecorrido(0);
+        return novoRegistros;
+      }
+
+      // Ativa o novo posto
+      const novoStartTime = Date.now();
+      setPostoAtivo(postoId);
+      setStartTime(novoStartTime);
+      setTempoDecorrido(0);
+
+      // Incrementa o clique no novo posto
+      novoRegistros[dataAtual] = {
+        ...novoRegistros[dataAtual] || {},
+        [postoId]: {
+          cliques: ((novoRegistros[dataAtual]?.[postoId]?.cliques) || 0) + 1,
+          tempoTotal: novoRegistros[dataAtual]?.[postoId]?.tempoTotal || 0,
+          startTime: novoStartTime,
+          turno: turnoAtual,
+          dataRegistro: dataAtual
+        }
+      };
+
+      return novoRegistros;
     });
   };
 
@@ -203,30 +233,36 @@ export default function PickTimePage() {
     ].join(':');
   };
 
-  const tempoParaExibir = postoAtivo && startTime ? Math.floor((Date.now() - startTime) / 1000) : tempoDecorrido;
+  const tempoParaExibir = postoAtivo && startTime ? tempoDecorrido : 0;
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 max-w-screen-sm mx-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-bold text-gray-800">Controle de Tempos - PickTime</h1>
-        <Link href="/relatorio" className="text-blue-600 hover:text-blue-800 text-sm">
-          Ver Relatório →
+     
+      <h1 className="text-xl font-bold px-2">M120 - MONTAGEM </h1>
+      <div className="flex justify-between items-center mb-4 p-6 bg-[#144E7C] rounded-lg">
+        
+        <div>
+          <h1 className="text-xl font-bold text-amber-50">Registo Paradas </h1>
+          <p className="text-amber-50 text-sm">Turno atual: {getTurno()}</p>
+        </div>
+        <Link href="/relatorio" className="flex justify-center items-center gap-2 text-amber-50 hover:text-blue-800 text-sm">
+          Ver Relatório <IoMdArrowRoundForward />
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 auto-rows-[minmax(0,_1fr)]">
+      <div className="grid grid-cols-2 gap-3 auto-rows-min">
         {postos.map((posto) => (
           <div
             key={posto.id}
-            className={`rounded-lg shadow-md overflow-hidden transition-all duration-300 ${
-              postoAtivo === posto.id ? 'ring-2 ring-yellow-400 bg-yellow-50 row-span-2' : ''
-            }`}
+            className={`rounded-lg shadow-md overflow-hidden transition-all duration-300 ease-in-out ${postoAtivo === posto.id
+              ? 'ring-2 ring-yellow-400 bg-yellow-50 row-span-2 scale-[1.01]'
+              : 'hover:scale-[1.01]'
+              }`}
           >
             <button
               onClick={() => handlePostoClick(posto.id)}
-              className={`p-3 text-left w-full transition-colors duration-300 ${
-                postoAtivo === posto.id ? 'bg-yellow-50' : 'hover:bg-gray-50'
-              }`}
+              className={`p-3 text-left w-full transition-colors duration-300 ${postoAtivo === posto.id ? 'bg-yellow-50' : 'hover:bg-gray-50'
+                }`}
             >
               <div className="flex justify-between items-center">
                 <div>
@@ -234,7 +270,7 @@ export default function PickTimePage() {
                   <p className="text-gray-600 text-xs">{posto.nome}</p>
                 </div>
                 <div className="text-xs text-gray-500 text-right">
-                Nº Paradas:<br />{registros[getDataAtual()]?.[posto.id]?.cliques || 0}
+                  Nº Paradas:<br />{registros[getDataAtual()]?.[posto.id]?.cliques || 0}
                 </div>
               </div>
 
@@ -254,6 +290,18 @@ export default function PickTimePage() {
           </div>
         ))}
       </div>
+      <footer className="text-center text-xs text-gray-500 mt-14 mb-2">
+        Made by{' '}
+        <a
+          href="https://www.linkedin.com/in/digoarthur/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-blue-700 hover:underline"
+        >
+          <FaLinkedin className="text-blue-700" />
+          digoarthur
+        </a>
+      </footer>
     </div>
   );
 }
