@@ -10,17 +10,18 @@ type Posto = {
   nome: string;
 };
 
-type RegistroAntigo = Omit<Registro, 'turno'> & { turno?: string };
 type Registro = {
   cliques: number;
   tempoTotal: number;
   startTime?: number | null;
-  turno: string;
+  turno?: string;
   dataRegistro: string;
   ativo: boolean;
 };
 
 type RegistrosPorData = Record<string, Record<string, Record<string, Registro>>>;
+
+const RESET_KEY = 'pickTimeLocalStorageResetRealizado';
 
 export default function PickTimePage() {
   const postos: Posto[] = [
@@ -55,7 +56,6 @@ export default function PickTimePage() {
     }
     return null;
   });
-  const [reorganizacaoFeita, setReorganizacaoFeita] = useState<boolean>(false);
 
   const getTurno = (): string => {
     const hour = new Date().getHours();
@@ -82,73 +82,23 @@ export default function PickTimePage() {
   };
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !reorganizacaoFeita) {
-      const saved = localStorage.getItem('registrosPickTime');
-      if (saved) {
-        try {
-          const dadosAntigos = JSON.parse(saved);
-          const novosDados: RegistrosPorData = {}; // Alterado para const
-          let precisaAtualizar = false;
-
-          for (const data in dadosAntigos) {
-            if (dadosAntigos.hasOwnProperty(data)) {
-              if (typeof dadosAntigos[data] === 'object' && !Array.isArray(dadosAntigos[data])) {
-                novosDados[data] = {};
-                for (const postoId in dadosAntigos[data]) {
-                  if (dadosAntigos[data].hasOwnProperty(postoId)) {
-                    const registroAntigo = dadosAntigos[data][postoId] as RegistroAntigo;
-                    const turno = registroAntigo.turno || getTurno(); // Se turno não existir, usa o turno atual
-                    if (!novosDados[data][turno]) {
-                      novosDados[data][turno] = {};
-                    }
-                    novosDados[data][turno][postoId] = {
-                      cliques: registroAntigo.cliques || 0,
-                      tempoTotal: registroAntigo.tempoTotal || 0,
-                      startTime: registroAntigo.startTime || null,
-                      turno: turno,
-                      dataRegistro: registroAntigo.dataRegistro || data,
-                      ativo: false,
-                    };
-                    if (!precisaAtualizar && JSON.stringify(dadosAntigos) !== JSON.stringify(novosDados)) {
-                      precisaAtualizar = true;
-                    }
-                  } else if (typeof dadosAntigos[data] === 'object' && Array.isArray(Object.values(dadosAntigos[data])[0])) {
-                    console.warn('Estrutura de dados muito antiga detectada e não migrada automaticamente.');
-                    setReorganizacaoFeita(true);
-                    return;
-                  }
-                }
-              } else if (typeof dadosAntigos[data] === 'object' && Array.isArray(Object.values(dadosAntigos[data])[0])) {
-                console.warn('Estrutura de dados antiga (array por dia) detectada e não migrada automaticamente.');
-                setReorganizacaoFeita(true);
-                return;
-              } else {
-                novosDados[data] = dadosAntigos[data];
-              }
-            }
-          }
-
-          if (precisaAtualizar) {
-            localStorage.setItem('registrosPickTime', JSON.stringify(novosDados));
-            setRegistros(novosDados);
-            console.log('Estrutura do localStorage reorganizada.');
-          } else {
-            setRegistros(dadosAntigos as RegistrosPorData);
-            console.log('Estrutura do localStorage já está atualizada.');
-          }
-        } catch (error) {
-          console.error('Erro ao tentar reorganizar a estrutura do localStorage:', error);
-        } finally {
-          setReorganizacaoFeita(true);
-        }
-      } else {
-        setReorganizacaoFeita(true);
+    if (typeof window !== 'undefined') {
+      const resetJaRealizado = localStorage.getItem(RESET_KEY);
+      if (!resetJaRealizado) {
+        localStorage.removeItem('registrosPickTime');
+        setRegistros({});
+        localStorage.removeItem('postoAtivoPickTime');
+        setPostoAtivo(null);
+        localStorage.removeItem('startTimePickTime');
+        setStartTime(null);
+        localStorage.setItem(RESET_KEY, 'true');
+        console.log('LocalStorage resetado uma única vez (com chave).');
       }
     }
-  }, [reorganizacaoFeita]);
+  }, []); // Executa apenas na montagem
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && reorganizacaoFeita) {
+    if (typeof window !== 'undefined') {
       localStorage.setItem('registrosPickTime', JSON.stringify(registros));
       if (postoAtivo) {
         localStorage.setItem('postoAtivoPickTime', postoAtivo);
@@ -158,7 +108,28 @@ export default function PickTimePage() {
         localStorage.removeItem('startTimePickTime');
       }
     }
-  }, [registros, postoAtivo, startTime, reorganizacaoFeita]);
+  }, [registros, postoAtivo, startTime]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (postoAtivo && startTime) {
+      const tick = () => {
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTime) / 1000);
+        setTempoDecorrido(elapsed);
+        localStorage.setItem('startTimePickTime', String(now - (elapsed * 1000)));
+      };
+      tick();
+      interval = setInterval(tick, 1000);
+    } else {
+      setTempoDecorrido(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [postoAtivo, startTime]);
 
   useEffect(() => {
     const checkTurnoChange = () => {
@@ -187,7 +158,7 @@ export default function PickTimePage() {
                     turno: turnoAnterior,
                     dataRegistro: dataAtual,
                     startTime: null,
-                    ativo: false
+                    ativo: false // Reseta o estado ativo para o novo turno
                   }
                 }
               }
@@ -208,28 +179,7 @@ export default function PickTimePage() {
     checkTurnoChange();
     const intervalId = setInterval(checkTurnoChange, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, [postoAtivo, startTime, tempoDecorrido]); // Adicionadas as dependências faltantes
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-
-    if (postoAtivo && startTime) {
-      const tick = () => {
-        const now = Date.now();
-        const elapsed = Math.floor((now - startTime) / 1000);
-        setTempoDecorrido(elapsed);
-        localStorage.setItem('startTimePickTime', String(now - (elapsed * 1000)));
-      };
-      tick();
-      interval = setInterval(tick, 1000);
-    } else {
-      setTempoDecorrido(0);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [postoAtivo, startTime]);
+  }, [postoAtivo, startTime, tempoDecorrido]);
 
   const handlePostoClick = (postoId: string) => {
     const turnoAtual = getTurno();
@@ -241,6 +191,7 @@ export default function PickTimePage() {
       const registroExistente = turnoRegistros[postoId] || { cliques: 0, tempoTotal: 0, ativo: false };
       const novoRegistros = { ...prev };
 
+      // Se já havia um posto ativo, salva o tempo acumulado
       if (postoAtivo && postoAtivo !== postoId) {
         const tempoAcumuladoAnterior = tempoDecorrido + (turnoRegistros[postoAtivo]?.tempoTotal || 0);
         novoRegistros[dataAtual] = {
@@ -257,6 +208,7 @@ export default function PickTimePage() {
         };
       }
 
+      // Se clicando no mesmo botão (click out)
       if (postoAtivo === postoId) {
         const tempoFinal = tempoDecorrido + registroExistente.tempoTotal;
         novoRegistros[dataAtual] = {
@@ -279,6 +231,7 @@ export default function PickTimePage() {
         return novoRegistros;
       }
 
+      // Se clicando em um novo botão (click in)
       if (postoAtivo !== postoId) {
         const novoStartTime = Date.now();
         setPostoAtivo(postoId);
