@@ -7,6 +7,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { MdFilterListOff } from "react-icons/md";
 import { BsFilter } from "react-icons/bs";
 import { FaLinkedin } from "react-icons/fa";
+
 type Registro = {
   cliques: number;
   tempoTotal: number;
@@ -14,15 +15,14 @@ type Registro = {
   dataRegistro: string;
 };
 
-type RegistrosPorData = Record<string, Record<string, Registro>>;
+type RegistrosPorData = Record<string, Record<string, Record<string, Registro>>>;
 
 export default function RelatorioPage() {
   const [registrosPorData, setRegistrosPorData] = useState<RegistrosPorData>({});
   const [dataSelecionada, setDataSelecionada] = useState<Date | null>(null);
-  const [dadosFiltrados, setDadosFiltrados] = useState<RegistrosPorData>({});
-  const [mostrarFiltro, setMostrarFiltro] = useState(false); // Novo estado para controlar visibilidade do filtro
+  const [dadosFiltrados, setDadosFiltrados] = useState<Record<string, Record<string, Record<string, Registro>>>>({});
+  const [mostrarFiltro, setMostrarFiltro] = useState(false);
 
-  // Obtém a data atual no formato YYYY-MM-DD
   const getDataAtual = () => {
     const now = new Date();
     const dia = String(now.getDate()).padStart(2, '0');
@@ -37,8 +37,6 @@ export default function RelatorioPage() {
       if (saved) {
         const dados = JSON.parse(saved);
         setRegistrosPorData(dados);
-
-        // Mostra automaticamente os dados do dia atual
         const dataAtual = getDataAtual();
         const dadosDoDia = dados[dataAtual] ? { [dataAtual]: dados[dataAtual] } : {};
         setDadosFiltrados(dadosDoDia);
@@ -49,16 +47,11 @@ export default function RelatorioPage() {
   useEffect(() => {
     if (dataSelecionada) {
       const dataFormatada = formatarDataParaChave(dataSelecionada);
-      const dadosDoDia = registrosPorData[dataFormatada]
-        ? { [dataFormatada]: registrosPorData[dataFormatada] }
-        : {};
+      const dadosDoDia = registrosPorData[dataFormatada] ? { [dataFormatada]: registrosPorData[dataFormatada] } : {};
       setDadosFiltrados(dadosDoDia);
     } else {
-      // Se não há data selecionada, mostra o dia atual
       const dataAtual = getDataAtual();
-      const dadosDoDia = registrosPorData[dataAtual]
-        ? { [dataAtual]: registrosPorData[dataAtual] }
-        : {};
+      const dadosDoDia = registrosPorData[dataAtual] ? { [dataAtual]: registrosPorData[dataAtual] } : {};
       setDadosFiltrados(dadosDoDia);
     }
   }, [dataSelecionada, registrosPorData]);
@@ -88,19 +81,16 @@ export default function RelatorioPage() {
     setMostrarFiltro(!mostrarFiltro);
   };
 
-
   const usandoFiltro = dataSelecionada !== null;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      {/* Cabeçalho */}
-      <h1 className="text-xl font-bold px-2">M120 - MONTAGEM </h1>
+      <h1 className="text-xl font-bold px-2">M120 - MONTAGEM</h1>
       <div className="flex justify-between items-center mb-6 p-6 bg-[#144E7C] rounded-lg h-[96px]">
         <h1 className="text-xl font-bold text-amber-50">Relatório de Paradas</h1>
         <div className="flex gap-4">
-
           <Link href="/picktime" className="flex items-center gap-2 text-amber-50 hover:text-blue-200 text-sm transition-colors">
-          <IoMdArrowRoundBack /> Ver Registos 
+            <IoMdArrowRoundBack /> Ver Registos
           </Link>
         </div>
       </div>
@@ -110,7 +100,6 @@ export default function RelatorioPage() {
       >
         {mostrarFiltro ? <MdFilterListOff size={30} className="text-black" /> : <BsFilter size={30} className="text-black" />}
       </button>
-      {/* Filtro por data (condicional) */}
       {mostrarFiltro && (
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -141,7 +130,6 @@ export default function RelatorioPage() {
         </div>
       )}
 
-      {/* Informação sobre o período visualizado */}
       <div className="mb-4 text-sm text-gray-600">
         {usandoFiltro ? (
           <p>Mostrando dados para: {dataSelecionada?.toLocaleDateString('pt-BR')}</p>
@@ -150,7 +138,6 @@ export default function RelatorioPage() {
         )}
       </div>
 
-      {/* Resultados */}
       {Object.keys(dadosFiltrados).length === 0 ? (
         <div className="bg-white rounded-lg shadow p-6 text-center text-gray-600">
           {usandoFiltro
@@ -160,7 +147,7 @@ export default function RelatorioPage() {
       ) : (
         Object.entries(dadosFiltrados)
           .sort(([dataA], [dataB]) => new Date(dataB).getTime() - new Date(dataA).getTime())
-          .map(([data, registrosDoDia]) => (
+          .map(([data, turnosDoDia]) => (
             <div key={data} className="mb-8 bg-white rounded-lg shadow overflow-hidden">
               <div className="p-4 bg-gray-50 border-b">
                 <h2 className="text-lg font-semibold text-gray-800">
@@ -168,13 +155,12 @@ export default function RelatorioPage() {
                 </h2>
               </div>
 
-              {Array.from(new Set(Object.values(registrosDoDia).map(r => r.turno)))
-                .filter((turno): turno is string => Boolean(turno))
-                .sort((a, b) => {
+              {Object.entries(turnosDoDia)
+                .sort(([turnoA], [turnoB]) => {
                   const ordemTurnos = ['08h-16h', '16h-00h', '00h-08h'];
-                  return ordemTurnos.indexOf(a) - ordemTurnos.indexOf(b);
+                  return ordemTurnos.indexOf(turnoA) - ordemTurnos.indexOf(turnoB);
                 })
-                .map(turno => (
+                .map(([turno, registrosDoTurno]) => (
                   <div key={turno} className="mb-0">
                     <div className="px-4 py-3 bg-gray-100 border-b">
                       <h3 className="font-medium text-gray-700">
@@ -197,8 +183,7 @@ export default function RelatorioPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                          {Object.entries(registrosDoDia)
-                            .filter(([, registro]) => registro.turno === turno)
+                          {Object.entries(registrosDoTurno)
                             .sort(([postoA], [postoB]) => parseInt(postoA.substring(1)) - parseInt(postoB.substring(1)))
                             .map(([postoId, registro], index) => (
                               <tr
@@ -224,18 +209,18 @@ export default function RelatorioPage() {
             </div>
           ))
       )}
-       <footer className="text-center text-xs text-gray-500 mt-6 mb-2">
-              Made by{' '}
-              <a
-                href="https://www.linkedin.com/in/digoarthur/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-blue-700 hover:underline"
-              >
-                <FaLinkedin className="text-blue-700" />
-                digoarthur
-              </a>
-            </footer>
+      <footer className="text-center text-xs text-gray-500 mt-6 mb-2">
+        Made by{' '}
+        <a
+          href="https://www.linkedin.com/in/digoarthur/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-blue-700 hover:underline"
+        >
+          <FaLinkedin className="text-blue-700" />
+          digoarthur
+        </a>
+      </footer>
     </div>
   );
 }
