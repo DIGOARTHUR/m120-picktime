@@ -87,7 +87,7 @@ export default function PickTimePage() {
       if (saved) {
         try {
           const dadosAntigos = JSON.parse(saved);
-          let novosDados: RegistrosPorData = {};
+          const novosDados: RegistrosPorData = {}; // Alterado para const
           let precisaAtualizar = false;
 
           for (const data in dadosAntigos) {
@@ -161,27 +161,6 @@ export default function PickTimePage() {
   }, [registros, postoAtivo, startTime, reorganizacaoFeita]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-
-    if (postoAtivo && startTime) {
-      const tick = () => {
-        const now = Date.now();
-        const elapsed = Math.floor((now - startTime) / 1000);
-        setTempoDecorrido(elapsed);
-        localStorage.setItem('startTimePickTime', String(now - (elapsed * 1000)));
-      };
-      tick();
-      interval = setInterval(tick, 1000);
-    } else {
-      setTempoDecorrido(0);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [postoAtivo, startTime]);
-
-  useEffect(() => {
     const checkTurnoChange = () => {
       const turnoAtual = getTurno();
       const lastKnownTurno = localStorage.getItem('lastKnownTurnoPickTime');
@@ -229,7 +208,28 @@ export default function PickTimePage() {
     checkTurnoChange();
     const intervalId = setInterval(checkTurnoChange, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [postoAtivo, startTime, tempoDecorrido]); // Adicionadas as dependências faltantes
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (postoAtivo && startTime) {
+      const tick = () => {
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTime) / 1000);
+        setTempoDecorrido(elapsed);
+        localStorage.setItem('startTimePickTime', String(now - (elapsed * 1000)));
+      };
+      tick();
+      interval = setInterval(tick, 1000);
+    } else {
+      setTempoDecorrido(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [postoAtivo, startTime]);
 
   const handlePostoClick = (postoId: string) => {
     const turnoAtual = getTurno();
